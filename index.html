@@ -1,0 +1,1158 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VV & 圈圈的幸福小屋</title>
+    
+    <!-- DeepSeek API - No import map needed -->
+
+    <style>
+        :root {
+            --primary-color: #FF6B6B;
+            --secondary-color: #4ECDC4;
+            --glass-bg: rgba(255, 255, 255, 0.85);
+            --glass-border: 1px solid rgba(255, 255, 255, 0.5);
+            --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+            --text-color: #2d3436;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background-color: #f0f0f0;
+            user-select: none;
+            color: var(--text-color);
+        }
+
+        /* --- Scene System --- */
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background-color: #333;
+            overflow: hidden;
+        }
+
+        .scene {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: cover;
+            background-position: center;
+            opacity: 0;
+            transition: opacity 0.8s ease-in-out;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .scene.active {
+            opacity: 1;
+            pointer-events: auto;
+            z-index: 2;
+        }
+
+        /* --- Hotspots & Interactables --- */
+        .hotspot {
+            position: absolute;
+            cursor: pointer;
+            z-index: 10;
+            /* Debug border only in debug mode, otherwise transparent but clickable */
+            background: rgba(255, 255, 255, 0.01); 
+            border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%; /* Organic shape */
+            transition: all 0.3s ease;
+        }
+
+        .hotspot:hover {
+            background: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+        }
+
+        /* Label Tags */
+        .label-tag {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 4px 10px;
+            border-radius: 15px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #555;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            pointer-events: none;
+            white-space: nowrap;
+            z-index: 100;
+            transform: translate(-50%, -100%);
+            margin-top: -10px;
+            border: 1px solid var(--primary-color);
+        }
+        
+        .label-tag::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 5px 5px 0;
+            border-style: solid;
+            border-color: rgba(255, 255, 255, 0.9) transparent transparent transparent;
+        }
+
+        /* Characters */
+        .character {
+            position: absolute;
+            cursor: pointer;
+            z-index: 20;
+            transition: filter 0.3s, opacity 0.3s;
+            animation: breathe 3s ease-in-out infinite;
+            filter: drop-shadow(0 5px 5px rgba(0,0,0,0.3));
+            /* 半透明占位符，不遮挡背景 */
+            opacity: 0.85;
+        }
+
+        .character:hover {
+            filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.8)) brightness(1.1);
+            transform: scale(1.05);
+            opacity: 1;
+        }
+
+        @keyframes breathe {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02) translateY(-2px); }
+        }
+
+        /* --- UI Overlay --- */
+        .ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 100;
+            display: flex; flex-direction: column; justify-content: space-between;
+        }
+
+        .pointer-events-auto { pointer-events: auto; }
+
+        .top-bar {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border-bottom: var(--glass-border);
+            box-shadow: var(--glass-shadow);
+            padding: 10px 20px;
+            display: flex; justify-content: space-between; align-items: center;
+            border-radius: 0 0 20px 20px; margin: 0 20px;
+        }
+
+        .days-counter { font-size: 1.1em; color: var(--primary-color); font-weight: 800; }
+
+        .btn {
+            background: var(--primary-color); color: white; border: none;
+            padding: 8px 15px; border-radius: 20px; cursor: pointer; font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: all 0.2s; margin-left: 5px;
+        }
+        .btn:hover { transform: translateY(-2px); }
+        .btn.secondary { background: var(--secondary-color); }
+
+        .nav-btn {
+            position: absolute; top: 80px; left: 20px;
+            display: none;
+            background: #fff; color: var(--primary-color); border: 2px solid var(--primary-color);
+        }
+        .nav-btn.visible { display: block; }
+
+        /* Chat Panel */
+        .chat-panel {
+            position: absolute; bottom: 20px; right: 20px;
+            width: 320px; height: 400px;
+            background: var(--glass-bg); backdrop-filter: blur(12px);
+            border: var(--glass-border); border-radius: 20px;
+            box-shadow: var(--glass-shadow);
+            display: flex; flex-direction: column; overflow: hidden;
+            transform: translateX(120%); transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .chat-panel.visible { transform: translateX(0); }
+        .chat-header { background: var(--primary-color); padding: 15px; color: white; font-weight: bold; display: flex; justify-content: space-between; }
+        .chat-messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        .message { max-width: 80%; padding: 8px 12px; border-radius: 12px; font-size: 0.9em; }
+        .message.ai { background: white; align-self: flex-start; border-bottom-left-radius: 2px; }
+        .message.user { background: var(--primary-color); color: white; align-self: flex-end; border-bottom-right-radius: 2px; }
+        .chat-input-area { padding: 10px; background: rgba(255,255,255,0.5); display: flex; gap: 5px; }
+        .chat-input-area input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 15px; outline: none; }
+
+        /* Modals (Wishlist, Goals, Flush) */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.4); display: none;
+            justify-content: center; align-items: center; z-index: 1000;
+            backdrop-filter: blur(3px);
+        }
+        .modal-overlay.visible { display: flex; }
+        .modal {
+            background: white; padding: 25px; border-radius: 20px;
+            width: 85%; max-width: 350px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            border: 4px solid var(--primary-color);
+            position: relative;
+        }
+        .modal h2 { margin-top: 0; color: var(--primary-color); text-align: center; }
+        .modal-close { position: absolute; top: 10px; right: 15px; cursor: pointer; font-size: 1.5em; color: #999; }
+        
+        .list-container { max-height: 200px; overflow-y: auto; margin: 10px 0; }
+        .list-item { background: #f9f9f9; padding: 8px; margin-bottom: 5px; border-radius: 8px; display: flex; align-items: center; }
+        .list-item input[type="checkbox"] { margin-right: 10px; }
+        .list-item.done { text-decoration: line-through; color: #aaa; }
+
+        /* Flush Animation */
+        @keyframes flushDown {
+            0% { transform: translateY(0) rotate(0); opacity: 1; }
+            100% { transform: translateY(200px) rotate(720deg) scale(0); opacity: 0; }
+        }
+        .flushing { animation: flushDown 1.5s ease-in forwards; }
+
+        /* Fridge Sticky Notes */
+        .sticky-note {
+            position: absolute; width: 80px; height: 80px;
+            background: #fff740; box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+            padding: 10px; font-family: 'Comic Sans MS', cursive; font-size: 12px;
+            transform: rotate(-5deg); color: #333;
+            display: flex; align-items: center; justify-content: center; text-align: center;
+            pointer-events: none;
+        }
+
+        /* Effects */
+        .fullscreen-effect {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 2000;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .effect-text {
+            font-size: 3em; color: var(--primary-color); font-weight: 900;
+            text-shadow: 2px 2px 0 white; opacity: 0; transform: scale(0.5);
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            text-align: center;
+        }
+        .effect-text.active { opacity: 1; transform: scale(1); }
+
+        /* 夜间模式 - 床头灯效果 */
+        .night-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(ellipse at 75% 30%, transparent 0%, rgba(0,0,30,0.7) 50%, rgba(0,0,20,0.9) 100%);
+            pointer-events: none;
+            z-index: 50;
+            opacity: 0;
+            transition: opacity 1.5s ease-in-out;
+        }
+        .night-overlay.active { opacity: 1; }
+
+        /* Loading */
+        #loading-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #FFF5EE; display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 9999; transition: opacity 0.5s;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container"></div>
+
+    <div class="ui-layer">
+        <div class="top-bar pointer-events-auto">
+            <div class="days-counter">🏠 VV & 圈圈的幸福小屋</div>
+            <div class="top-buttons">
+                <button id="miss-btn" class="btn">💕 想你了 (<span id="miss-count">0</span>)</button>
+                <button id="settings-btn" class="btn secondary">⚙️ 设置</button>
+            </div>
+        </div>
+        <button class="btn nav-btn pointer-events-auto" id="back-btn">🔙 返回全景</button>
+        
+        <!-- Chat -->
+        <div class="chat-panel pointer-events-auto" id="chat-panel">
+            <div class="chat-header">
+                <span id="chat-title">与 VV 聊天中...</span>
+                <span id="chat-close" style="cursor:pointer;">×</span>
+            </div>
+            <div class="chat-messages" id="chat-messages"></div>
+            <div class="chat-input-area">
+                <input type="text" id="chat-input" placeholder="说点什么...">
+                <button id="chat-send" class="btn">➤</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- 1. Bathroom Flush -->
+    <div class="modal-overlay" id="flush-modal">
+        <div class="modal pointer-events-auto">
+            <span class="modal-close" onclick="closeModal('flush-modal')">❌</span>
+            <h2>🚽 坏心情冲冲冲</h2>
+            <textarea id="bad-mood-input" placeholder="写下你的不开心，然后冲走它！" style="width:100%; height:100px; border:1px solid #ddd; border-radius:10px; padding:10px; resize:none;"></textarea>
+            <button class="btn" style="width:100%; margin-top:10px;" onclick="flushBadMood()">🌊 冲走！</button>
+        </div>
+    </div>
+
+    <!-- 2. Kitchen Wishlist -->
+    <div class="modal-overlay" id="wish-modal">
+        <div class="modal pointer-events-auto">
+            <span class="modal-close" onclick="closeModal('wish-modal')">❌</span>
+            <h2>✨ 许愿清单</h2>
+            <div class="list-container" id="wish-list">
+                <!-- Items injected by JS -->
+            </div>
+            <div style="display:flex; gap:5px;">
+                <input type="text" id="new-wish-input" placeholder="想一起做的事..." style="flex:1; padding:5px;">
+                <button class="btn" onclick="addWish()">+</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Study Goals -->
+    <div class="modal-overlay" id="goal-modal">
+        <div class="modal pointer-events-auto">
+            <span class="modal-close" onclick="closeModal('goal-modal')">❌</span>
+            <h2>📚 奋斗目标 & DDL</h2>
+            <div class="list-container" id="goal-list"></div>
+            <div style="display:flex; gap:5px;">
+                <input type="text" id="new-goal-input" placeholder="新的目标..." style="flex:1; padding:5px;">
+                <button class="btn" onclick="addGoal()">+</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Settings -->
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal pointer-events-auto">
+            <span class="modal-close" onclick="closeModal('settings-modal')">❌</span>
+            <h2>⚙️ 配置</h2>
+            <div style="margin-bottom:10px;">
+                <label>🔑 DeepSeek API Key</label>
+                <input type="password" id="api-key-input" placeholder="sk-..." style="width:100%; padding:8px; border-radius:8px; border:1px solid #ddd;">
+            </div>
+            <div style="margin-bottom:10px;">
+                <label>在一起的日期</label>
+                <input type="date" id="start-date-input" style="width:100%;">
+            </div>
+            <button id="settings-save" class="btn" style="width:100%;">保存</button>
+        </div>
+    </div>
+
+    <div class="fullscreen-effect">
+        <div class="effect-text" id="effect-text">❤️</div>
+    </div>
+
+    <!-- 夜间模式遮罩 -->
+    <div class="night-overlay" id="night-overlay"></div>
+
+    <!-- 5. 影音室电影选择 -->
+    <div class="modal-overlay" id="movie-modal">
+        <div class="modal pointer-events-auto">
+            <span class="modal-close" onclick="closeModal('movie-modal')">❌</span>
+            <h2>🎬 选择电影</h2>
+            <div style="margin-bottom:15px;">
+                <p style="color:#666; font-size:14px;">当前播放：<span id="current-movie" style="color:var(--primary-color); font-weight:bold;">《V字仇杀队》</span></p>
+            </div>
+            <div style="margin-bottom:10px;">
+                <label>🎞️ 想看什么电影？</label>
+                <input type="text" id="movie-input" placeholder="输入电影名..." style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd; margin-top:5px;">
+            </div>
+            <div id="movie-history" style="margin:10px 0; max-height:120px; overflow-y:auto;">
+                <p style="font-size:12px; color:#999;">📝 观影记录：</p>
+            </div>
+            <button class="btn" style="width:100%;" onclick="playMovie()">▶️ 播放！</button>
+        </div>
+    </div>
+
+    <div id="loading-screen">
+        <h2 style="color: #FF6B6B;">正在布置温馨小家...</h2>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, doc, onSnapshot, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        // ==========================================
+        // 🔥 Firebase 配置 - 请替换为你自己的配置
+        // ==========================================
+        // 步骤：
+        // 1. 访问 https://console.firebase.google.com/
+        // 2. 创建新项目（或使用现有项目）
+        // 3. 点击 "添加应用" -> Web应用
+        // 4. 复制配置信息替换下面的内容
+        // 5. 在 Firestore Database 中创建数据库（选择测试模式）
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyAkzPZONsRIpB0AOWThDHNXQ866DycJ9_E",
+            authDomain: "vv-qq-home.firebaseapp.com",
+            projectId: "vv-qq-home",
+            storageBucket: "vv-qq-home.firebasestorage.app",
+            messagingSenderId: "524884196830",
+            appId: "1:524884196830:web:983cd6d48402eb5bc0b14f"
+        };
+
+        // Firebase 初始化
+        let db = null;
+        let firebaseEnabled = false;
+        const FIREBASE_DOC_ID = 'shared_home_data'; // 共享数据文档ID
+
+        try {
+            if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                firebaseEnabled = true;
+                console.log('🔥 Firebase 已连接！');
+            } else {
+                console.log('⚠️ Firebase 未配置，使用本地存储模式');
+            }
+        } catch (error) {
+            console.error('Firebase 初始化失败:', error);
+        }
+
+        // --- DeepSeek API 配置 (OpenAI 兼容格式) ---
+        // 文档: https://api-docs.deepseek.com/zh-cn/
+        // 使用 /v1 路径以确保 OpenAI SDK 兼容性
+        const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
+
+        // --- Assets ---
+        const ASSETS = {
+            house_bg: "./全景图.jpg",
+            bedroom_bg: "./卧室内景.jpg",
+            kitchen_bg: "./厨房内景.jpg",
+            cinema_bg: "./电影房内景.jpg",
+            bathroom_bg: "./卫生间.jpg",
+            study_bg: "./书房内景.jpg",
+            fridge_bg: "./冰箱特写.jpg",
+            cat_avatar: "./小猫.jpg",
+            // Placeholders for characters if no images provided
+            vv_avatar: "https://placehold.co/100x200/FFB7B2/FFFFFF?text=VV",
+            quanquan_avatar: "https://placehold.co/100x200/87CEEB/FFFFFF?text=QQ"
+        };
+
+        // --- Scene Config ---
+        const SCENES = {
+            'main': {
+                bg: ASSETS.house_bg,
+                hotspots: [
+                    // 第一行：卧室 | 其他房间 | 书房
+                    { label: '🛏️ 卧室', style: { top: '2%', left: '2%', width: '30%', height: '45%' }, action: 'goto:bedroom' },
+                    { label: '🛋️ 其他房间', style: { top: '2%', left: '35%', width: '30%', height: '45%' }, action: 'effect:🚧 想要什么，等待圈圈大人装修~' },
+                    { label: '📖 书房', style: { top: '2%', left: '68%', width: '30%', height: '45%' }, action: 'goto:study' },
+                    // 第二行：厨房 | 卫生间 | 影音室
+                    { label: '🍳 厨房', style: { top: '52%', left: '2%', width: '30%', height: '45%' }, action: 'goto:kitchen' },
+                    { label: '🚿 卫生间', style: { top: '52%', left: '35%', width: '30%', height: '45%' }, action: 'goto:bathroom' },
+                    { label: '🎬 影音室', style: { top: '52%', left: '68%', width: '30%', height: '45%' }, action: 'goto:cinema' }
+                ],
+                // 全景图不显示人物，进入房间后才显示
+                characters: []
+            },
+            'bedroom': {
+                bg: ASSETS.bedroom_bg,
+                hotspots: [
+                    { label: '🛏️ 温馨大床', style: { top: '40%', left: '20%', width: '60%', height: '40%' }, action: 'effect:💤 晚安，好梦！' },
+                    { label: '💡 床头灯', style: { top: '25%', left: '70%', width: '15%', height: '20%' }, action: 'special:toggleLight' }
+                ],
+                characters: [
+                    { name: 'VV', label: 'VV', img: ASSETS.vv_avatar, style: { top: '35%', left: '25%', width: '12%' } },
+                    { name: 'QuanQuan', label: '圈圈', img: ASSETS.quanquan_avatar, style: { top: '35%', left: '55%', width: '12%' } }
+                ]
+            },
+            'study': {
+                bg: ASSETS.study_bg,
+                hotspots: [
+                    { label: '📝 奋斗目标', style: { top: '30%', left: '30%', width: '40%', height: '40%' }, action: 'modal:goal-modal' },
+                    { label: '📚 书架', style: { top: '10%', left: '70%', width: '25%', height: '50%' }, action: 'effect:📖 一起读书吧！' }
+                ],
+                characters: [
+                    { name: 'VV', label: 'VV', img: ASSETS.vv_avatar, style: { top: '40%', left: '60%', width: '12%' } }
+                ]
+            },
+            'kitchen': {
+                bg: ASSETS.kitchen_bg,
+                hotspots: [
+                    { label: '❄️ 满满的冰箱', style: { top: '15%', left: '10%', width: '25%', height: '70%' }, action: 'goto:fridge' },
+                    { label: '✨ 许愿清单', style: { top: '40%', left: '40%', width: '20%', height: '20%' }, action: 'modal:wish-modal' }
+                ],
+                characters: [
+                    { name: 'QuanQuan', label: '圈圈', img: ASSETS.quanquan_avatar, style: { top: '40%', left: '70%', width: '10%' } }
+                ]
+            },
+            'fridge': {
+                bg: ASSETS.fridge_bg,
+                hotspots: [
+                    { label: '打开冰箱', style: { top: '10%', left: '10%', width: '80%', height: '80%' }, action: 'effect:🥥 满满的爱与椰汁！' }
+                ],
+                extras: [
+                    { type: 'note', text: '🥛 VV 乳糖不耐受', style: { top: '20%', left: '60%' } },
+                    { type: 'note', text: '🌶️ 圈圈 不吃辣', style: { top: '35%', left: '65%', transform: 'rotate(5deg)', background: '#ffccbc' } }
+                ]
+            },
+            'bathroom': {
+                bg: ASSETS.bathroom_bg,
+                hotspots: [
+                    { label: '🚽 冲走坏心情', style: { top: '40%', left: '30%', width: '40%', height: '40%' }, action: 'modal:flush-modal' },
+                    { label: '🛁 泡泡浴', style: { top: '20%', left: '60%', width: '30%', height: '35%' }, action: 'effect:🫧 放松一下~' }
+                ],
+                characters: [
+                    { name: 'YeYe', label: '椰椰🐱', img: ASSETS.cat_avatar, style: { top: '60%', left: '20%', width: '8%', borderRadius: '50%' } }
+                ]
+            },
+            'cinema': {
+                bg: ASSETS.cinema_bg,
+                hotspots: [
+                    { label: '🍿 播放电影', style: { top: '10%', left: '10%', width: '80%', height: '50%' }, action: 'modal:movie-modal' },
+                    { label: '🎮 游戏机', style: { top: '65%', left: '60%', width: '25%', height: '25%' }, action: 'effect:🕹️ 一起玩游戏！' }
+                ],
+                characters: [
+                    { name: 'VV', label: 'VV', img: ASSETS.vv_avatar, style: { top: '50%', left: '30%', width: '10%' } },
+                    { name: 'QuanQuan', label: '圈圈', img: ASSETS.quanquan_avatar, style: { top: '50%', left: '50%', width: '10%' } },
+                    { name: 'YeYe', label: '椰椰🐱', img: ASSETS.cat_avatar, style: { top: '65%', left: '42%', width: '6%', borderRadius: '50%' } }
+                ]
+            }
+        };
+
+        // --- State ---
+        let currentSceneId = 'main';
+        let currentChatCharacter = ''; // 当前聊天角色
+        let isNightMode = false; // 床头灯状态
+        let currentMovie = localStorage.getItem('vv_currentMovie') || '《V字仇杀队》';
+        let movieHistory = JSON.parse(localStorage.getItem('vv_movieHistory') || '["《V字仇杀队》"]');
+        
+        let appConfig = {
+            apiKey: localStorage.getItem('vv_apiKey') || '',
+            startDate: localStorage.getItem('vv_startDate') || '2023-01-01'
+        };
+        let missCount = parseInt(localStorage.getItem('vv_missCount') || '0');
+        
+        // 对话历史 - 按角色分开存储
+        let allChatHistories = JSON.parse(localStorage.getItem('vv_chatHistories') || '{}');
+        let chatHistory = []; // 当前对话历史
+        
+        // Local Data (Simulating DB)
+        let wishes = JSON.parse(localStorage.getItem('vv_wishes') || '["一起看《V字仇杀队》", "去海边旅游"]');
+        let goals = JSON.parse(localStorage.getItem('vv_goals') || '["每天背单词", "早睡早起"]');
+
+        // ==========================================
+        // 🔄 云端同步功能
+        // ==========================================
+        
+        // 获取所有需要同步的数据
+        function getAllSyncData() {
+            return {
+                wishes: wishes,
+                goals: goals,
+                missCount: missCount,
+                currentMovie: currentMovie,
+                movieHistory: movieHistory,
+                chatHistories: allChatHistories,
+                startDate: appConfig.startDate,
+                lastUpdated: new Date().toISOString()
+            };
+        }
+
+        // 保存数据到云端
+        async function saveToCloud() {
+            if (!firebaseEnabled || !db) return;
+            
+            try {
+                const data = getAllSyncData();
+                await setDoc(doc(db, 'homes', FIREBASE_DOC_ID), data);
+                console.log('☁️ 数据已同步到云端');
+            } catch (error) {
+                console.error('云端保存失败:', error);
+            }
+        }
+
+        // 从云端加载数据
+        async function loadFromCloud() {
+            if (!firebaseEnabled || !db) return false;
+            
+            try {
+                const docSnap = await getDoc(doc(db, 'homes', FIREBASE_DOC_ID));
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    
+                    // 合并数据（云端数据优先）
+                    if (data.wishes) wishes = data.wishes;
+                    if (data.goals) goals = data.goals;
+                    if (data.missCount !== undefined) missCount = data.missCount;
+                    if (data.currentMovie) currentMovie = data.currentMovie;
+                    if (data.movieHistory) movieHistory = data.movieHistory;
+                    if (data.chatHistories) allChatHistories = data.chatHistories;
+                    if (data.startDate) appConfig.startDate = data.startDate;
+                    
+                    // 同步到本地存储
+                    localStorage.setItem('vv_wishes', JSON.stringify(wishes));
+                    localStorage.setItem('vv_goals', JSON.stringify(goals));
+                    localStorage.setItem('vv_missCount', missCount);
+                    localStorage.setItem('vv_currentMovie', currentMovie);
+                    localStorage.setItem('vv_movieHistory', JSON.stringify(movieHistory));
+                    localStorage.setItem('vv_chatHistories', JSON.stringify(allChatHistories));
+                    localStorage.setItem('vv_startDate', appConfig.startDate);
+                    
+                    console.log('☁️ 已从云端加载数据');
+                    return true;
+                }
+            } catch (error) {
+                console.error('云端加载失败:', error);
+            }
+            return false;
+        }
+
+        // 监听云端数据变化（实时同步）
+        function setupCloudSync() {
+            if (!firebaseEnabled || !db) return;
+            
+            onSnapshot(doc(db, 'homes', FIREBASE_DOC_ID), (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    
+                    // 更新本地数据
+                    if (data.wishes) wishes = data.wishes;
+                    if (data.goals) goals = data.goals;
+                    if (data.missCount !== undefined) {
+                        missCount = data.missCount;
+                        document.getElementById('miss-count').innerText = missCount;
+                    }
+                    if (data.currentMovie) currentMovie = data.currentMovie;
+                    if (data.movieHistory) movieHistory = data.movieHistory;
+                    if (data.chatHistories) allChatHistories = data.chatHistories;
+                    
+                    console.log('🔄 收到云端更新');
+                }
+            });
+        }
+        
+        // 保存对话历史到 localStorage 和云端
+        function saveChatHistory() {
+            if (currentChatCharacter) {
+                allChatHistories[currentChatCharacter] = chatHistory;
+                localStorage.setItem('vv_chatHistories', JSON.stringify(allChatHistories));
+                saveToCloud(); // 同步到云端
+            }
+        }
+        
+        // 加载角色的对话历史
+        function loadChatHistory(characterName) {
+            return allChatHistories[characterName] || [];
+        }
+
+        // --- Init ---
+        async function init() {
+            // 尝试从云端加载数据
+            await loadFromCloud();
+            
+            // 设置实时同步监听
+            setupCloudSync();
+            
+            setupUI();
+            renderScene('main');
+            document.getElementById('miss-count').innerText = missCount;
+            
+            setTimeout(() => {
+                document.getElementById('loading-screen').style.opacity = 0;
+                setTimeout(() => document.getElementById('loading-screen').style.display = 'none', 500);
+            }, 800);
+        }
+
+        // --- Rendering ---
+        function renderScene(sceneId) {
+            const container = document.getElementById('game-container');
+            const config = SCENES[sceneId];
+            if (!config) return;
+
+            const sceneEl = document.createElement('div');
+            sceneEl.className = 'scene';
+            sceneEl.style.backgroundImage = `url('${config.bg}')`;
+
+            // Hotspots
+            if (config.hotspots) {
+                config.hotspots.forEach(spot => {
+                    const el = document.createElement('div');
+                    el.className = 'hotspot';
+                    Object.assign(el.style, spot.style);
+                    el.onclick = () => handleAction(spot.action);
+                    
+                    // Label Tag
+                    const label = document.createElement('div');
+                    label.className = 'label-tag';
+                    label.innerText = spot.label;
+                    // Position label above the hotspot center
+                    label.style.left = '50%';
+                    label.style.top = '0';
+                    el.appendChild(label);
+                    
+                    sceneEl.appendChild(el);
+                });
+            }
+
+            // Characters
+            if (config.characters) {
+                config.characters.forEach(char => {
+                    const el = document.createElement('img');
+                    el.className = 'character';
+                    el.src = char.img;
+                    Object.assign(el.style, char.style);
+                    el.onclick = (e) => { e.stopPropagation(); openChat(char.name); };
+                    
+                    // Character Label
+                    const label = document.createElement('div');
+                    label.className = 'label-tag';
+                    label.innerText = char.label;
+                    label.style.left = parseFloat(char.style.left) + (parseFloat(char.style.width)/2) + '%';
+                    label.style.top = parseFloat(char.style.top) - 2 + '%';
+                    sceneEl.appendChild(label);
+                    sceneEl.appendChild(el);
+                });
+            }
+
+            // Extras (Notes)
+            if (config.extras) {
+                config.extras.forEach(extra => {
+                    if(extra.type === 'note') {
+                        const el = document.createElement('div');
+                        el.className = 'sticky-note';
+                        el.innerText = extra.text;
+                        Object.assign(el.style, extra.style);
+                        sceneEl.appendChild(el);
+                    }
+                });
+            }
+
+            container.appendChild(sceneEl);
+            
+            // Transition
+            sceneEl.offsetHeight; // Force reflow
+            sceneEl.classList.add('active');
+
+            // Cleanup old
+            const oldScenes = Array.from(container.querySelectorAll('.scene:not(:last-child)'));
+            oldScenes.forEach(el => {
+                el.classList.remove('active');
+                setTimeout(() => el.remove(), 800);
+            });
+
+            currentSceneId = sceneId;
+            document.getElementById('back-btn').classList.toggle('visible', sceneId !== 'main');
+        }
+
+        function handleAction(actionString) {
+            const [type, value] = actionString.split(':');
+            if (type === 'goto') {
+                // 切换场景时关闭夜间模式
+                if (value !== 'bedroom' && isNightMode) {
+                    toggleNightMode();
+                }
+                renderScene(value);
+            }
+            else if (type === 'effect') triggerEffect(value);
+            else if (type === 'modal') openModal(value);
+            else if (type === 'special') handleSpecialAction(value);
+        }
+
+        // 特殊动作处理
+        function handleSpecialAction(action) {
+            if (action === 'toggleLight') {
+                toggleNightMode();
+            }
+        }
+
+        // 床头灯 - 夜间模式切换
+        function toggleNightMode() {
+            isNightMode = !isNightMode;
+            const overlay = document.getElementById('night-overlay');
+            overlay.classList.toggle('active', isNightMode);
+            triggerEffect(isNightMode ? '🌙 灯光变暗了...晚安' : '☀️ 灯光亮起来了~');
+        }
+
+        // --- Logic Functions ---
+        window.openModal = (id) => {
+            document.getElementById(id).classList.add('visible');
+            if(id === 'wish-modal') renderList('wish-list', wishes, 'wish');
+            if(id === 'goal-modal') renderList('goal-list', goals, 'goal');
+            if(id === 'movie-modal') {
+                document.getElementById('current-movie').innerText = currentMovie;
+                renderMovieHistory();
+            }
+        };
+        window.closeModal = (id) => document.getElementById(id).classList.remove('visible');
+
+        // 电影相关功能
+        window.playMovie = () => {
+            const input = document.getElementById('movie-input');
+            const movieName = input.value.trim();
+            if (!movieName) return;
+            
+            // 格式化电影名
+            const formattedName = movieName.startsWith('《') ? movieName : `《${movieName}》`;
+            currentMovie = formattedName;
+            localStorage.setItem('vv_currentMovie', currentMovie);
+            
+            // 添加到观影记录（避免重复）
+            if (!movieHistory.includes(formattedName)) {
+                movieHistory.unshift(formattedName);
+                if (movieHistory.length > 10) movieHistory.pop(); // 最多保存10条
+                localStorage.setItem('vv_movieHistory', JSON.stringify(movieHistory));
+            }
+            
+            document.getElementById('current-movie').innerText = currentMovie;
+            input.value = '';
+            closeModal('movie-modal');
+            triggerEffect(`🎬 正在播放${currentMovie}`);
+            renderMovieHistory();
+            saveToCloud(); // 同步到云端
+        };
+
+        function renderMovieHistory() {
+            const container = document.getElementById('movie-history');
+            container.innerHTML = '<p style="font-size:12px; color:#999;">📝 观影记录：</p>';
+            movieHistory.forEach(movie => {
+                const div = document.createElement('div');
+                div.style.cssText = 'padding:5px 8px; margin:3px 0; background:#f5f5f5; border-radius:5px; font-size:13px; cursor:pointer;';
+                div.innerText = movie;
+                div.onclick = () => {
+                    document.getElementById('movie-input').value = movie.replace(/[《》]/g, '');
+                };
+                container.appendChild(div);
+            });
+        }
+
+        window.flushBadMood = () => {
+            const input = document.getElementById('bad-mood-input');
+            if(!input.value.trim()) return;
+            
+            input.classList.add('flushing');
+            // Sound effect could go here
+            setTimeout(() => {
+                input.value = '';
+                input.classList.remove('flushing');
+                closeModal('flush-modal');
+                triggerEffect("坏心情冲走啦！👋");
+            }, 1500);
+        };
+
+        function renderList(containerId, dataList, type) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            dataList.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = 'list-item';
+                div.innerHTML = `
+                    <span>${item}</span>
+                    <button style="margin-left:auto; background:none; border:none; cursor:pointer;" onclick="removeItem('${type}', ${index})">❌</button>
+                `;
+                if(type === 'wish') {
+                    div.onclick = (e) => {
+                        if(e.target.tagName !== 'BUTTON') triggerEffect("🎂 愿望达成！送你蛋糕！");
+                    };
+                }
+                container.appendChild(div);
+            });
+        }
+
+        window.addWish = () => {
+            const val = document.getElementById('new-wish-input').value;
+            if(val) { 
+                wishes.push(val); 
+                localStorage.setItem('vv_wishes', JSON.stringify(wishes)); 
+                renderList('wish-list', wishes, 'wish'); 
+                document.getElementById('new-wish-input').value='';
+                saveToCloud(); // 同步到云端
+            }
+        };
+        window.addGoal = () => {
+            const val = document.getElementById('new-goal-input').value;
+            if(val) { 
+                goals.push(val); 
+                localStorage.setItem('vv_goals', JSON.stringify(goals)); 
+                renderList('goal-list', goals, 'goal'); 
+                document.getElementById('new-goal-input').value='';
+                saveToCloud(); // 同步到云端
+            }
+        };
+        window.removeItem = (type, index) => {
+            if(type === 'wish') { 
+                wishes.splice(index, 1); 
+                localStorage.setItem('vv_wishes', JSON.stringify(wishes)); 
+                renderList('wish-list', wishes, 'wish'); 
+            }
+            if(type === 'goal') { 
+                goals.splice(index, 1); 
+                localStorage.setItem('vv_goals', JSON.stringify(goals)); 
+                renderList('goal-list', goals, 'goal'); 
+            }
+            saveToCloud(); // 同步到云端
+        };
+
+        function triggerEffect(text) {
+            const el = document.getElementById('effect-text');
+            el.innerText = text;
+            el.classList.add('active');
+            setTimeout(() => el.classList.remove('active'), 2000);
+        }
+
+        // --- Chat & AI (DeepSeek - OpenAI 兼容格式) ---
+        async function callDeepSeekAPI(userMessage, characterName) {
+            if (!appConfig.apiKey) {
+                return '请先在设置中配置 DeepSeek API Key 哦~ 💕';
+            }
+
+            // 验证 API Key 格式
+            if (!appConfig.apiKey.startsWith('sk-')) {
+                return '❌ API Key 格式不对，应该以 sk- 开头哦~';
+            }
+
+            // 构建系统提示 - 根据角色定制人物性格
+            const characterProfiles = {
+                'VV': `你是VV，是用户（圈圈）的女朋友。
+你的性格特点：
+- 温柔体贴但偶尔会撒娇
+- 喜欢看电影，最爱《V字仇杀队》
+- 乳糖不耐受，喜欢喝椰汁
+- 有点小迷糊但很可爱
+- 喜欢用emoji表情
+- 会关心对方有没有好好吃饭、休息
+
+你们住在一个温馨的小屋里，现在你正在${getSceneName(currentSceneId)}。
+请用亲密、自然的语气回复，像真正的情侣对话一样。可以根据情境适当展开，不要太短也不要太长。`,
+                
+                'QuanQuan': `你是圈圈，是用户（VV）的男朋友。
+你的性格特点：
+- 幽默风趣，喜欢逗女朋友开心
+- 不吃辣，但会为了女朋友尝试
+- 喜欢打游戏，也喜欢陪女朋友看电影
+- 很宠女朋友，会说一些甜蜜的话
+- 偶尔会装可怜求抱抱
+- 喜欢用emoji表情
+
+你们住在一个温馨的小屋里，现在你正在${getSceneName(currentSceneId)}。
+请用亲密、自然的语气回复，像真正的情侣对话一样。可以根据情境适当展开，不要太短也不要太长。`,
+                
+                'YeYe': `你是椰椰，是VV和圈圈养的一只可爱小猫咪。
+你的性格特点：
+- 傲娇但其实很粘人
+- 喜欢蹭人的腿
+- 会用"喵~"来表达各种情绪
+- 偶尔会调皮捣蛋
+- 喜欢在卫生间玩耍
+- 对逗猫棒毫无抵抗力
+
+你现在在${getSceneName(currentSceneId)}。
+请用猫咪的口吻回复，多用"喵"字，可以描述一些猫咪的可爱动作（用括号描述），比如（蹭蹭）（打滚）（舔爪子）等。`
+            };
+            
+            const systemPrompt = characterProfiles[characterName] || `你是${characterName}，请友好地回复用户。`;
+
+            // 添加用户消息到历史并保存
+            chatHistory.push({ role: 'user', content: userMessage });
+            saveChatHistory();
+
+            // 构建请求消息 (OpenAI 格式)
+            const messages = [
+                { role: 'system', content: systemPrompt },
+                ...chatHistory.slice(-10) // 只保留最近10条对话
+            ];
+
+            try {
+                console.log('Calling DeepSeek API...', DEEPSEEK_API_URL);
+                
+                const response = await fetch(DEEPSEEK_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${appConfig.apiKey}`,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: 'deepseek-chat',
+                        messages: messages,
+                        stream: false
+                    })
+                });
+
+                console.log('Response status:', response.status);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('DeepSeek API Error:', response.status, errorText);
+                    
+                    try {
+                        const errorData = JSON.parse(errorText);
+                        console.error('Error details:', errorData);
+                    } catch(e) {}
+                    
+                    if (response.status === 401) {
+                        return '❌ API Key 无效，请检查设置~';
+                    } else if (response.status === 429) {
+                        return '⏳ 请求太频繁了，稍等一下再聊吧~';
+                    } else if (response.status === 402) {
+                        return '💰 API 余额不足，请充值~';
+                    } else if (response.status === 400) {
+                        return '❌ 请求格式错误，请检查设置~';
+                    }
+                    return `😢 AI 暂时掉线了... (${response.status})`;
+                }
+
+                const data = await response.json();
+                console.log('API Response:', data);
+                
+                const aiReply = data.choices?.[0]?.message?.content || '...';
+                
+                // 添加AI回复到历史并保存
+                chatHistory.push({ role: 'assistant', content: aiReply });
+                saveChatHistory();
+                
+                return aiReply;
+            } catch (error) {
+                console.error('DeepSeek API Error:', error);
+                return '🌐 网络好像有点问题... 请检查是否能访问 api.deepseek.com';
+            }
+        }
+
+        function getSceneName(sceneId) {
+            const names = {
+                'main': '客厅',
+                'bedroom': '卧室',
+                'kitchen': '厨房',
+                'bathroom': '卫生间',
+                'cinema': '影音室',
+                'study': '书房',
+                'fridge': '冰箱前'
+            };
+            return names[sceneId] || '家里';
+        }
+
+        function setupUI() {
+            document.getElementById('back-btn').onclick = () => renderScene('main');
+            document.getElementById('miss-btn').onclick = () => {
+                missCount++;
+                localStorage.setItem('vv_missCount', missCount);
+                document.getElementById('miss-count').innerText = missCount;
+                triggerEffect("❤️ 想你了！");
+                saveToCloud(); // 同步到云端
+            };
+            
+            // Chat
+            document.getElementById('chat-close').onclick = () => {
+                document.getElementById('chat-panel').classList.remove('visible');
+            };
+
+            const send = async () => {
+                const input = document.getElementById('chat-input');
+                const txt = input.value.trim();
+                if (!txt) return;
+                
+                addMsg('user', txt);
+                input.value = '';
+                input.disabled = true;
+                document.getElementById('chat-send').disabled = true;
+
+                // 显示正在输入的提示
+                const typingDiv = document.createElement('div');
+                typingDiv.className = 'message ai';
+                typingDiv.id = 'typing-indicator';
+                typingDiv.innerText = '正在输入...';
+                document.getElementById('chat-messages').appendChild(typingDiv);
+                
+                // 获取当前聊天角色
+                const chatTitle = document.getElementById('chat-title').innerText;
+                const characterName = chatTitle.includes('VV') ? 'VV' : 
+                                     chatTitle.includes('圈圈') ? '圈圈' : '椰椰';
+
+                const reply = await callDeepSeekAPI(txt, characterName);
+                
+                // 移除输入提示
+                document.getElementById('typing-indicator')?.remove();
+                
+                addMsg('ai', reply);
+                input.disabled = false;
+                document.getElementById('chat-send').disabled = false;
+                input.focus();
+            };
+
+            document.getElementById('chat-send').onclick = send;
+            document.getElementById('chat-input').onkeypress = (e) => { 
+                if (e.key === 'Enter' && !e.shiftKey) send(); 
+            };
+
+            // Settings
+            document.getElementById('settings-btn').onclick = () => {
+                document.getElementById('api-key-input').value = appConfig.apiKey;
+                document.getElementById('start-date-input').value = appConfig.startDate;
+                openModal('settings-modal');
+            };
+
+            document.getElementById('settings-save').onclick = () => {
+                const newApiKey = document.getElementById('api-key-input').value.trim();
+                const newStartDate = document.getElementById('start-date-input').value;
+                
+                if (newApiKey) {
+                    appConfig.apiKey = newApiKey;
+                    localStorage.setItem('vv_apiKey', newApiKey);
+                }
+                if (newStartDate) {
+                    appConfig.startDate = newStartDate;
+                    localStorage.setItem('vv_startDate', newStartDate);
+                }
+                
+                closeModal('settings-modal');
+                triggerEffect('✅ 保存成功！');
+            };
+        }
+
+        function addMsg(type, text) {
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.innerText = text;
+            document.getElementById('chat-messages').appendChild(div);
+        }
+
+        window.openChat = (name) => {
+            // 保存之前角色的对话（如果有）
+            if (currentChatCharacter && currentChatCharacter !== name) {
+                saveChatHistory();
+            }
+            
+            // 设置当前聊天角色
+            currentChatCharacter = name;
+            
+            // 加载该角色的对话历史
+            chatHistory = loadChatHistory(name);
+            
+            // 清空并重新渲染聊天界面
+            const messagesContainer = document.getElementById('chat-messages');
+            messagesContainer.innerHTML = '';
+            
+            // 设置聊天标题
+            const emoji = name === 'VV' ? '💕' : name === 'QuanQuan' ? '💙' : '🐱';
+            const displayName = name === 'QuanQuan' ? '圈圈' : name === 'YeYe' ? '椰椰' : name;
+            document.getElementById('chat-title').innerText = `${emoji} 与 ${displayName} 聊天中...`;
+            document.getElementById('chat-panel').classList.add('visible');
+            
+            // 如果有历史记录，显示历史消息
+            if (chatHistory.length > 0) {
+                chatHistory.forEach(msg => {
+                    addMsg(msg.role === 'user' ? 'user' : 'ai', msg.content);
+                });
+                // 滚动到底部
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            } else {
+                // 没有历史记录时显示欢迎消息
+                const greetings = {
+                    'VV': '嘿~ 在想我吗？😊 今天过得怎么样呀？',
+                    'QuanQuan': '亲爱的来找我啦~ 💕 想我了没？',
+                    'YeYe': '喵~ 🐱 （抬头看着你，尾巴轻轻摇晃）'
+                };
+                setTimeout(() => {
+                    addMsg('ai', greetings[name] || '你好呀~');
+                    // 把欢迎消息也存入历史
+                    chatHistory.push({ role: 'assistant', content: greetings[name] || '你好呀~' });
+                    saveChatHistory();
+                }, 300);
+            }
+        };
+
+        init();
+    </script>
+</body>
+</html>
